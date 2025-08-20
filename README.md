@@ -1,6 +1,16 @@
 
-# **DeH4R**
-## The official repo of [DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction.](https://arxiv.org/abs/2508.13669)
+<div align="center">
+
+<h1>DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction</h1>
+<div>
+    <h4 align="center">
+        <a href="https://arxiv.org/abs/2508.13669" target='_blank'>[arXiv]</a> 
+    </h4>
+</div>
+</div>
+
+## **Intro**
+DeH4R unifies graphgrowing dynamics with graph-generating efficiency through a decoupling strategy, effectively harnessing their complementary strengths, which offers great flexibility and is able to grow the graph in parallel from multiple points. DeH4R achieves new SOTA results with a significant improvement over previous methods and exceptional inference speed on two mainstream public benchmarks.
 
 ## **Updates**
 - [ ] **Incoming**: Training code.
@@ -9,7 +19,7 @@
 ## **Enviroment & Platform**
 - RTX 3090 * 8
 - Ubuntu 24.04.1 LTS
-- CUDA: 12.0
+- CUDA: 11.8
 - python 3.11.9
 - torch 2.4.1
 - pytorch-lightning 2.4.0
