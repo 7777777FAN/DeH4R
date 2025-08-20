@@ -1,3 +1,7 @@
 data/
 sam/
 sam_ckpts/
+temp/
+*.svg
+__pycache__/
+*.pyc

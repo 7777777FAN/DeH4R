@@ -1,0 +1,8 @@
+[submodule "sam"]
+    path = sam
+    url = git@github.com:facebookresearch/segment-anything.git
+
+
+[submodule "sam2"]
+    path = sam2
+    url = git@github.com:facebookresearch/sam2.git

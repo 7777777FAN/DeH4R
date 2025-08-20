@@ -1,0 +1,87 @@
+
+# strategy
+BASE_LR: 0.001
+ENCODER_LR_FACTOR: 0.1
+EPOCH: 20
+BATCH_SIZE: 4
+NUM_WORKERS: 0
+UNFROZEN_SAM: True
+VIS_TRAIN: False
+PRETRAINED: True
+
+UPSAMPLE: False  # 是否上采样再做crop, 只有SAM vit需要，其余为False
+CONCAT: False # 是否把crop得到的特征与1/16的高级特征concat起来  PS: 如果PATCH_SIZE // 16 != ROI_SIZE时不能为True 
+
+
+# Data
+DATASET: 'cityscale'
+MEAN: [123.675, 116.28, 103.53]
+STD: [58.395, 57.12, 57.375]
+NOISE: 1  # std for data augmentaion, added to kpt_coord
+IMAGE_SIZE: 2048
+PATCH_SIZE: 512
+D_THR: 30   # 过滤掉原graph中两点间距离大于30像素的边，这些边是错的
+NORM_D: 30.0  # 步长最多为30像素
+
+# Model 
+ENCODER:
+  BACKBONE: 'sam2-hiera-b+'
+  SAM_CKPT_PATH: './sam_ckpts/sam2.1_hiera_base_plus.pt'
+  ENCODER_OUTPUT_DIM: 256
+
+# Maske Decoder
+MASK_DECODER:
+  USE_HIGH_RES_FEAT: True
+
+# Topo Decoder
+TOPO_DECODER:
+  USE_HIGH_RES_FEAT: True
+  WITH_POS_EMBED: False
+  PROJ: False
+  HIDDEN_DIM: 128 # transformer层流传的张量的维度
+  NUM_HEADS: 8
+  DEPTH: 3  #  多少个transformer encoder/decoder层堆叠
+  DIM_FFN: 256
+  NUM_QUERIES: 10 # 最多可预测多少个邻接点
+  ROI_SIZE: 3 
+  NUM_POINTS: 220
+  VALIDITY: 0.4
+
+MATCHER:
+  SET_COST_CLASS: 1  # 类别损失权重
+  SET_COST_BOX: 5    # 坐标损失权重
+
+CRITERION:
+  EOS_COEF: 0.1
+  MASK_LOSS_COEF: 1
+  PROB_LOSS_COEF: 1
+  COORD_LOSS_COEF: 10
+
+# inference
+INFER:
+  DECODE: True  # 是否采用解码算法
+  TRACE: True   # 是否开启追踪
+  # mask
+  KPT_THR: 0.35
+  SMPT_THR: 0.20
+  ROAD_THR: 0.25
+
+  # decode相关
+  SNAP_DIST: 12
+  ANGLE_DISTANCE_WEIGHT: 10
+
+  VALIDITY: 0.5
+  SAMPLE_MARGIN: 32
+  PATCHES_PER_EDGE: 16
+  INFER_BATCH_SIZE: 4
+  KPT_NMS_RADIUS: 4
+  SMPT_NMS_RADIUS: 10
+  ROAD_NMS_RADIUS: 12
+  EDGE_ENDPOINT_D: 10  # 在第一次预测时, 为了扩展关键点把edge_endpoints插入时考虑其多大范围内已有关键点
+
+  TRACE_THR: 0.7
+  SERCH_D: 32 # 单位: m, 在追踪的时候，在每个预测点周围多大的范围去找已有点(c)，该已有点(c)和当前点(a)同时预测了这个预测点（中间点b） a--> b <--c
+  BRIDGE_D: 10 # 单位: m, 在追踪的时候每个预测点和已有点距离多近会被弥合
+
+  EXTEND_TIMES: 4
+
