@@ -5,3 +5,4 @@ temp/
 *.svg
 __pycache__/
 *.pyc
+release_pth/

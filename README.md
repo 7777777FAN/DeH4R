@@ -14,6 +14,7 @@ DeH4R unifies graphgrowing dynamics with graph-generating efficiency through a d
 
 ## **Updates**
 - [ ] **Incoming**: Training code.
+- ✅ **2025/9/14**: Release model and weights (available at [DeH4R](https://huggingface.co/godx7/DeH4R)). 
 - ✅ **2025/8/20**: Release the code for inference and evauation.
 
 ## **Enviroment & Platform**
