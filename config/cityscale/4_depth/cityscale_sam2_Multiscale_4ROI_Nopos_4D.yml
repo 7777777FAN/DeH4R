@@ -4,7 +4,7 @@ BASE_LR: 0.001
 ENCODER_LR_FACTOR: 0.1
 EPOCH: 20
 BATCH_SIZE: 4
-NUM_WORKERS: 4
+NUM_WORKERS: 32
 UNFROZEN_SAM: True
 VIS_TRAIN: False
 PRETRAINED: True
@@ -44,7 +44,7 @@ TOPO_DECODER:
   WITH_POS_EMBED: False
   HIDDEN_DIM: 128 # transformer层流传的张量的维度
   NUM_HEADS: 8
-  DEPTH: 4  # XXX 多少个transformer encoder/decoder层堆叠
+  DEPTH: 4  # 多少个transformer encoder/decoder层堆叠
   DIM_FFN: 256
   NUM_QUERIES: 10 # 最多可预测多少个邻接点
   ROI_SIZE: 4 

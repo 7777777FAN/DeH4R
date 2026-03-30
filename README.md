@@ -1,103 +1,98 @@
 
 <div align="center">
+    <h1>DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction</h1>
+    <a href="https://arxiv.org/abs/2508.13669" target="_blank">
+        <img src="https://img.shields.io/badge/arXiv-Paper-b31b1b?style=for-the-badge&logo=arxiv&labelColor=555555" />
+    </a>
+</div>
 
-<h1>DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction</h1>
-<div>
-    <h4 align="center">
-        <a href="https://arxiv.org/abs/2508.13669" target='_blank'>[arXiv]</a> 
-    </h4>
-</div>
-</div>
+
 
 ## **Intro**
-DeH4R unifies graphgrowing dynamics with graph-generating efficiency through a decoupling strategy, effectively harnessing their complementary strengths, which offers great flexibility and is able to grow the graph in parallel from multiple points. DeH4R achieves new SOTA results with a significant improvement over previous methods and exceptional inference speed on two mainstream public benchmarks.
+DeH4R unifies graph-growing dynamics with graph-generating efficiency through a decoupling strategy, effectively harnessing their complementary strengths, which offers great flexibility and is able to grow the graph in parallel from multiple points. DeH4R achieves new SOTA results with a significant improvement over previous methods and exceptional inference speed on two mainstream public benchmarks.
 
 ## **Updates**
-- [ ] **Incoming**: Training code.
+- ✅ **2026/3/30**: Full code release.
 - ✅ **2025/9/14**: Release model and weights (available at [DeH4R](https://huggingface.co/godx7/DeH4R)). 
 - ✅ **2025/8/20**: Release the code for inference and evauation.
 
-## **Enviroment & Platform**
-- RTX 3090 * 8
-- Ubuntu 24.04.1 LTS
-- CUDA: 11.8
-- python 3.11.9
-- torch 2.4.1
-- pytorch-lightning 2.4.0
-- wandb 0.18.7
-- Rtree 1.3.0
+## **Environment setup**
 
-Actually, traning DeH4R do not require 8 GPUs, 4 is recommended.
+To quickly set up the environment, run 
+```bash
+bash ./scripts/run_uv_init.sh
 
-## **Data**
+source .DeH4R/bin/activate
+```
+## **Data & Pretrained Models**
 ### Directory architecture
 ```
 DeH4R
 ├── data/
-│   ├── cityscale/
-│   └── spacenet/
-└──sam_ckpts/
-    ├── sam_vit_b_01ec64.pth
-    └── sam2.1_hiera_base_plus.pt
+│    ├── cityscale/
+│    └── spacenet/
+└── sam_ckpts/
+│    ├── sam_vit_b_01ec64.pth
+│    └── sam2.1_hiera_base_plus.pt
+└── pretrained_pth/
+     ├── cityscale_sam.pth
+     ├── cityscale_sam2.pth
+     ├── spacenet_sam.pth
+     └── spacenet_sam2.pth
 ```
+
 ### Prepare data
 To download data, run 
 ```bash
-bash ./download_data.bash
+bash ./scripts/run_download_data.sh
 ```
-or manually download the [CityScale](https://drive.google.com/file/d/1R8sI1RmFe3rUfWMQaOfsYlBDHpQxFH-H/view?usp=share_link) dataset into `./data/cityscale/` and then unzip it ([SpaceNet](https://drive.google.com/file/d/1FiZVkEEEVir_iUJpEH5NQunrtlG0Ff1W/view?usp=share_link) dataset similarly). 
-
-🚚 The data was neither collected, published, nor stored by us, we only provide a convenient way to download it. Links are copied from [RNGDet++](https://github.com/TonyXuQAQ/RNGDetPlusPlus).
+or manually download the [CityScale](https://drive.google.com/file/d/1R8sI1RmFe3rUfWMQaOfsYlBDHpQxFH-H/view?usp=share_link) dataset into `./data/cityscale/` and then unzip it ([SpaceNet](https://drive.google.com/file/d/1FiZVkEEEVir_iUJpEH5NQunrtlG0Ff1W/view?usp=share_link) dataset similarly). 🚚 Links are copied from [RNGDet++](https://github.com/TonyXuQAQ/RNGDetPlusPlus).
 
 To preprocess data (generate 3 types of masks), run 
 ```bash
 python data_preprocess.py --dataset dataset_name
 ```
-and then check the generated masks in corresponding dataset directory.
 
 
 ### Prepare pretrained checkpoints
-Download the ViT-B checkpoint from official [SAM ](https://github.com/facebookresearch/segment-anything) repo and the hiera_B+ checkpoint from [SAM2](https://github.com/facebookresearch/sam2) repo, respectively. Put them under `./sam_ckpts/`
+Download the ViT-B checkpoint from official [SAM ](https://github.com/facebookresearch/segment-anything) repo and the hiera_B+ checkpoint from [SAM2](https://github.com/facebookresearch/sam2) repo, respectively. Put them under `./sam_ckpts/`.
+
+We provide DeH4R checkpoints for convenient inference (available at [DeH4R](https://huggingface.co/godx7/DeH4R)). You can download it and put it under `./pretrained_pth/`
 
 ## **Train**
-Incoming...
+Specify config file in `./scripts/run_train_cityscale.sh` and then run 
+```bash
+bash ./scripts/run_train_cityscale.sh  # SpaceNet similarly
+```
 
 ## **Inference**
-### Infer on the CityScale dataset
-Specify config file and the checkpoint path in `run_test_cityscale.bash` and then run 
+Specify config file and the checkpoint path in `./scripts/run_test_cityscale.sh` and then run 
 ```bash
-bash ./run_test_cityscale.bash
+bash ./scripts/run_test_cityscale.sh  # SpaceNet similarly
 ```
 or directly run 
 ```bash
-python infer.py --config=./config/cityscale/sam.yml \
-    --ckpt=./path/to/checkpoint.ckpt
+python infer.py --config=./config/cityscale/final_sam2.yml \
+    --ckpt=./path/to/checkpoint.ckpt    # or *.pth
 ```
 ⚠️ Note: Here we specify the config file because DeH4R supports three graph building mode: `DECODE`, `TRACE` and `DECODE & TRACE`, where `TRACE` means graph expansion (growing), and we decide the mode from config.
 
-### Infer on the Spacenet dataset
-Similar to CityScale.
-
 ## **Evaluation**
-### Evaluate on the CityScale dataset
-Specify the config file path in `run_metrics_cityscale.bash` and then run
+Specify the config file path in `run_metrics_cityscale.sh` and then run
 ```bash
-bash ./run_metrics_cityscale.bash  /path/to/output/dir/
+bash ./scripts/run_metrics_cityscale.sh  /path/to/output/dir/     # SpaceNet similarly
 ```
 ⚠️ Note: The content of the config file should be the same as in inference.
 
-### Evaluate on the Spacenet dataset
-Similar to CityScale.
 
-
-## **Ackonwledgement**
+## **Acknowledgement**
 We would like to acknowledge that DeH4R has benefited from:
-- [sam_road](https://github.com/htcr/sam_road)
+- [SAM-Road](https://github.com/htcr/sam_road)
 - [Sat2Graph](https://github.com/songtaohe/Sat2Graph)
 - [RNGDet++](https://github.com/TonyXuQAQ/RNGDetPlusPlus)
 - [DETR](https://github.com/facebookresearch/detr)
-- [segment-anything](https://github.com/facebookresearch/segment-anything)
-- [sam2](https://github.com/facebookresearch/sam2)
+- [SAM](https://github.com/facebookresearch/segment-anything)
+- [SAM2](https://github.com/facebookresearch/sam2)
 
 We are grateful to their authors for making these resources available.
 

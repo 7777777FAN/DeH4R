@@ -968,23 +968,11 @@ def DecodeAndVis(imagegraph,
     if use_graph_refine:
         _vis(neighbors , filename+"_norefine_bk.png", size=imagesize)
 
- 
-        # BUG 检查有没有内插点到graph上		===> 插上来了!不过不知为何有些原本检测出来的关键点没有出现在图上
+
         keypoint_map = np.zeros((2048, 2048), dtype=np.uint8)
         for i in range(len(keypoints[0])):
             cv2.circle(keypoint_map, (keypoints[1][i], keypoints[0][i]), radius=3, color=255, thickness=-1)
-        Image.fromarray(keypoint_map).save(filename+"_keypoint_原生.png")
-  
-        # keypoint_map = np.zeros((2048, 2048), dtype=np.uint8)
-        # keypoints_for_nms = np.column_stack(keypoints)[:, ::-1]	# rc->xy
-        # edgeEndpoints_for_nms = np.column_stack(edgeEndpoints)[:, ::-1]	# rc->xy
-        # points = np.concatenate([keypoints_for_nms, edgeEndpoints_for_nms], axis=0)
-        # kpt_scores = np.concatenate([np.ones((keypoints_for_nms.shape[0]))+0.1, edgeEndpoints_scores], axis=0)
-        # kps = nms_points(points, kpt_scores, keypoint_end_idx=keypoints_for_nms.shape[0]-1, radius=8)	# rc坐标矩阵
-        # print(f"内插了{len(kps)-len(keypoints_for_nms)}个点")
-        # for pnt in kps:
-        # 	cv2.circle(keypoint_map, pnt, radius=3, color=255, thickness=-1)
-        # Image.fromarray(keypoint_map).save(filename+"_keypoint_NMS.png")
+        Image.fromarray(keypoint_map).save(filename+"_keypoint_native.png")
 
         graph = graph_refine(neighbors, isolated_thr=isolated_thr, spurs_thr=spurs_thr)
         

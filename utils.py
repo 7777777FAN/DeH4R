@@ -1,30 +1,33 @@
 # coding: utf-8
 
 # 各种工具函数
-import os
-import copy
-import time
-import json
-import math
 import yaml
-import torch
-import pickle
-import random
-import cv2 as cv
+# from addict import Dict   # 这个访问不存在的键 不会报错
+from easydict import EasyDict   # 这个访问不存在的键 会报错
+from PIL import Image
 import numpy as np
-from rtree import index
-from skimage import measure
-from easydict import EasyDict 
+import json
+import torch
 from datetime import datetime
+import os
+from skimage import measure
+from rtree import index
 from scipy.spatial import cKDTree
 from collections import defaultdict
+import cv2 as cv
+import pickle
+import math
 import scipy.ndimage.filters as filters
 import scipy.ndimage.morphology as morphology
 from skimage.morphology import skeletonize
-from PIL import Image
+import copy
+import random
+import time
 
-from infer import infer_topo_patch_by_patch
+
 import GTE_graph_utils.decoder as GTE_utils
+
+
 
 def load_config(cfg_path):
     with open(cfg_path) as f:
@@ -36,6 +39,18 @@ def read_rgb(path):
     rgb = Image.open(path)
     return np.array(rgb)
 
+
+def set_seed(seed=42):  
+    '''仅在推理时使用''' 
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    
 # dataset related
 def get_data_split(dataset='cityscale'):
     dataset = dataset.lower()
@@ -50,6 +65,29 @@ def get_data_split(dataset='cityscale'):
     train_ids, valid_ids, test_ids = data_split['train'], data_split[valid_key], data_split['test']
     
     return train_ids, valid_ids, test_ids
+
+
+def globalscale_data_partition():
+    # dataset partition
+    indrange_train = []
+    indrange_test = []
+    indrange_test_out_domain = []
+    indrange_validation = []
+    #0-2374 train
+    #2375-2713 val
+    #2714-3337 indomain
+    for x in range(2375):
+        indrange_train.append(x)
+    
+    for x in range(2375,2714):
+        indrange_validation.append(x)
+
+    for x in range(2714,3338):
+        indrange_test.append(x)
+    
+    for x in range(130):
+        indrange_test_out_domain.append(x)
+    return indrange_train, indrange_validation, indrange_test, indrange_test_out_domain
 
 
 def transform_coord(cfg, graph):
@@ -79,8 +117,8 @@ def float2int_graph(graph):
         new_graph[new_k] = new_neighbors
         
     return new_graph
-
- 
+    
+    
 def collate_fn(batch):
     keys = batch[0].keys()
     collated = {}
@@ -105,8 +143,8 @@ def collate_fn(batch):
             collated[k] = torch.stack([item[k] for item in batch], dim=0)
             
     return collated
-
-
+    
+    
 def get_patch_info_one_img(img_id, img_size, patch_size, sample_margin, patches_per_edge):
     patches = []
     min_location = sample_margin
@@ -165,6 +203,25 @@ def cal_runtime(func):
     return wrapper
 
 
+def extract_edge_endpoints_from_pred_map(cfg, edge_endpoint_map):   
+    '''
+    :param edge_endpoint_map: map after sigmoid, range[0, 1]
+    '''
+    keypoints = []
+    edge_endpoint_map = edge_endpoint_map.detach().cpu().numpy() if isinstance(edge_endpoint_map, torch.Tensor) else edge_endpoint_map 
+    binarized_map = (edge_endpoint_map > cfg.INFER.KPT_THR).astype(np.uint8) # 只有keypoint需要二值化，edge_endpoint不需要
+    labels = measure.label(binarized_map, connectivity=2)
+    region_props = measure.regionprops(labels)
+    min_area = 4
+    for region in region_props:
+        if region.area > min_area:
+            center_point = [x for x in region.centroid]    # rc and not round to int
+            keypoints.append(center_point)
+    keypoints = np.array(keypoints)
+    
+    return keypoints
+
+
 def detect_local_minima(arr, mask, threshold=0.5):
     # https://stackoverflow.com/questions/3684484/peak-detection-in-a-2d-array/3689710#3689710
     """
@@ -203,9 +260,34 @@ def detect_local_minima(arr, mask, threshold=0.5):
     return idx, scores
 
 
+def get_points_and_scores_from_skel(road_mask, thr):
+    binarized_mask = road_mask > thr    # bool
+    road_skel = skeletonize(binarized_mask, method='lee')   # bool
+    rcs = np.column_stack(np.where(road_skel))
+    scores = road_mask[road_skel]
+    
+    return rcs, scores, road_skel
+
+
+def get_points_and_scores_from_mask(mask, threshold, keypoint=False, mode='normal'):
+    assert mode in ['normal', 'center']
+    if keypoint:
+        mode = 'normal'
+        
+    if 'normal' == mode:
+        rcs = np.column_stack(np.where(mask > threshold))   # 把分别存储了非零值所在位置的行和列坐标的数组转换为列后叠成矩阵，这样每一行就是rc  
+        scores = mask[mask > threshold]     # 非0值的列表  
+    # 改成先细化再返回点
+    elif 'center' == mode:
+        img = np.array(mask > threshold).astype(np.uint8)
+        skel = skeletonize(img, method="lee")
+        rcs = np.column_stack(np.where(skel))  
+        scores = mask[skel != 0]  
+    return rcs, scores
+
+
 # @cal_runtime
 def nms_points(points, scores, radius, return_indices=False):
-    # from SAM-Road
     # if score > 1.0, the point is forced to be kept regardless
     sorted_indices = np.argsort(scores)[::-1]   # 默认按值从小到大排序，改为从大到小，返回->值的索引
     sorted_points = points[sorted_indices, :]   # 点的rc坐标 组成的矩阵
@@ -225,7 +307,95 @@ def nms_points(points, scores, radius, return_indices=False):
         return sorted_points[kept], sorted_indices[kept]
     else:
         return sorted_points[kept]
+
+
+def nms_points_along_line(road_skel, points, scores, radius, return_indices=False):
+    '''沿着连续方向进行NMS'''
+    return 
+
+
+def get_valid_rc_linearly():
+    # 这里处理超出范围的坐标时应该是线性插值而不是直接截断，因为可能出现只有以边超出去的情况，另一边应该线性变化
+    # 其实不用检查，因为永远不会超出去（sample_margin=64，最大步长才为30）
+    pass
+
+
+def get_edge_endpoints_v2(cfg, abs_GTE, keypoints):
+    '''用来从第一次模型检测的关键点的预测结果中推出edge_endpoints（从当前关键点预测的 但 不与已有关键点邻近  的点）'''
+    keypoints_rtree = index.Index()
+    for i in range(len(keypoints)):
+        r, c = keypoints[i]
+        keypoints_rtree.insert(i, (r, c, r, c))
+        
+    edge_endpoints = []
+    for kpt_idx in range(len(keypoints)):
+        r, c = keypoints[kpt_idx]    # 这里的rc是浮点数，为了计算精度而没有进行舍入
+        next_pred_coords = abs_GTE[kpt_idx]
+        if not len(next_pred_coords):
+            continue
+        else:
+            for coord in next_pred_coords:
+                adj_r, adj_c = int(r+cfg.NORM_D*coord[0]+0.5), int(c+cfg.NORM_D*coord[1]+0.5)
+                adj_r, adj_c = max(0, min(cfg.IMAGE_SIZE-1, adj_r)), max(0, min(cfg.IMAGE_SIZE-1, adj_c))
+                query_box = (
+                    adj_r-cfg.INFER.EDGE_ENDPOINT_D, 
+                    adj_c-cfg.INFER.EDGE_ENDPOINT_D, 
+                    adj_r+cfg.INFER.EDGE_ENDPOINT_D, 
+                    adj_c+cfg.INFER.EDGE_ENDPOINT_D
+                )
+                candidates = list(keypoints_rtree.intersection(query_box))
+                if len(candidates) == 0:
+                    edge_endpoints.append((adj_r, adj_c))
+                    new_index = len(keypoints)+len(edge_endpoints)
+                    keypoints_rtree.insert(new_index, (adj_r, adj_c, adj_r, adj_c))
+                else:
+                    continue
+    if len(edge_endpoints):
+        return np.array(edge_endpoints)
+    else:
+        return None
+
+
+def get_raw_edge_endpoints(cfg, mask_output_dir, img_id, GTE, keypoints):
+    # deprecated   
+    '''
+        :return edge_endpoints: 根据预测坐标绘制一个map并用图像处理算法得到的粗提取结果,
+        坐标为float32类型以尽量减少后续聚类误差
+    '''
+    edge_endpoint_map = np.zeros((cfg.IMAGE_SIZE, cfg.IMAGE_SIZE))
+    for kpt_idx in range(len(keypoints)):
+        r, c = keypoints[kpt_idx]
+        
+        all_pred_adj_points = GTE[kpt_idx]   # [ ( [cls], [[Δr, Δc]] ), (...) ]
+        if not len(all_pred_adj_points):
+            continue
+        for patch_predict in all_pred_adj_points:
+            if not len(patch_predict):
+                continue
+            for adj_pnt_validity, adj_pnt_coord in zip(*patch_predict):
+                if adj_pnt_validity < cfg.INFER.VALIDITY:    # non-road point
+                    continue
+                delat_r, delta_c = adj_pnt_coord
+                adj_r, adj_c = int(r+cfg.NORM_D*delat_r+0.5), int(c+cfg.NORM_D*delta_c+0.5)
+                # NOTE 这里处理超出范围的坐标时应该是线性插值而不是直接截断，因为可能出现只有一边超出去的情况，另一边应该线性变化
+                # cityscale数据集不用检查，因为永远不会超出去（sample_margin=64，最大步长才为30）
+                # adj_r, adj_c = get_valid_rc_linearly((adj_r, adj_c), cfg.IMAGE_SIZE)
+                adj_r, adj_c = max(0, min(cfg.IMAGE_SIZE-1, adj_r)), max(0, min(cfg.IMAGE_SIZE-1, adj_c))
+                edge_endpoint_map[adj_r, adj_c] = 1
+    # vis edge endpoint
+    edge_endpoint_map = edge_endpoint_map.astype(np.uint8)*255
+    for (r, c) in np.column_stack(edge_endpoint_map.nonzero()):
+        cv.circle(edge_endpoint_map, (c, r), color=(255, 255, 255), radius=3, thickness=-1)
+    cv.imwrite(os.path.join(mask_output_dir, f'{img_id}_raw_edge_endpoint.png'), edge_endpoint_map)
     
+    edge_endpoints = extract_edge_endpoints_from_pred_map(cfg, edge_endpoint_map)
+    
+    # 已经试过了，用上面的方法处理edge_endpoints比较好，APLS高1.7个点
+    # edge_endpoint_map = filters.gaussian_filter(edge_endpoint_map, 3)
+    # edge_endpoints, edge_endpoint_scores = detect_local_minima(-edge_endpoint_map, edge_endpoint_map, threshold=0.1)  
+    
+    return edge_endpoints
+
 
 def merge_across_patch_predicts(cfg, raw_GTE, keypoints, thr=None):
     '''
@@ -292,7 +462,6 @@ def merge_across_patch_predicts(cfg, raw_GTE, keypoints, thr=None):
     return new_rel_GTE
 
 
-
 def vis_GTE(cfg, GTE, keypoints, img_id, img, output_dir):
     rel_GTE = merge_across_patch_predicts(cfg, GTE, keypoints)
     vis_dir = os.path.join(output_dir, 'GTE_vis')
@@ -310,12 +479,55 @@ def vis_GTE(cfg, GTE, keypoints, img_id, img, output_dir):
             adj_r, adj_c = int(r+cfg.NORM_D*delta_r), int(c+cfg.NORM_D*delta_c)
             cv.line(bgr, (c, r), (adj_c, adj_r), color=(255, 255, 255), thickness=1)
             cv.line(vanilla_base_map, (c, r), (adj_c, adj_r), color=(255, 255, 255), thickness=1) 
+            # cv.circle(bgr, (adj_c, adj_r), radius=3, color=(0, 0, 255), thickness=-1)
+            # cv.circle(vanilla_base_map, (adj_c, adj_r), radius=3, color=(0, 0, 255), thickness=-1)
         cv.circle(bgr, (c, r), radius=1, color=(255, 0, 0), thickness=-1)
         cv.circle(vanilla_base_map, (c, r), radius=1, color=(255, 0, 0), thickness=-1)
     cv.imwrite(os.path.join(vis_dir, f'{img_id}_with_rgb.png'), bgr)
     cv.imwrite(os.path.join(vis_dir, f'{img_id}_no_rgb.png'), vanilla_base_map)
     
+
+def get_edge_endpoints(cfg, mask_output_dir, img_id, abs_GTE, raw_edge_endpoints):
+    # 已废弃
+    '''
+        把不同 keypoint 预测的同一个道路点融合, 是所有kpt一起处理的
+        
+        :param abs_GTE: kpt索引为key, 对应预测的邻接点的绝对坐标组成的列表为value, dtype为np.float32
+        
+        :return edge_endpoints: 所有可能的edge_endpoints, 绝对坐标, dtype为np.float32
+    '''
+    all_pred_pnts = []
+    for _, single_kpt_predicts in abs_GTE.items():
+        if not len(single_kpt_predicts):    # 当前关键点没有预测点（原本可能有，但是可能被阈值之类的过滤掉了）
+            continue
+        all_pred_pnts.extend(single_kpt_predicts)
+    all_pred_pnts = np.array(all_pred_pnts)
     
+    pred_tree = cKDTree(all_pred_pnts)
+    grouped_pred_pnts_idxs = pred_tree.query_ball_point(raw_edge_endpoints, r=cfg.INFER.MERGE_D)
+    checked = np.zeros(shape=(all_pred_pnts.shape[0], ), dtype=np.bool_)
+    
+    edge_endpoints = []
+    for single_center_around_pnts_idxs in grouped_pred_pnts_idxs:
+        if not len(single_center_around_pnts_idxs): 
+            continue
+        checked[single_center_around_pnts_idxs] = True
+        edge_endpoints.append(np.mean(all_pred_pnts[single_center_around_pnts_idxs, :], axis=0))
+    isolate_pnt_idxs = np.where(~checked)[0]  
+    if len(isolate_pnt_idxs):
+        edge_endpoints.extend(all_pred_pnts[isolate_pnt_idxs, :])    # 没被中心捕获的点成为单独的预测点，保持原状
+    
+    edge_endpoints = np.array(edge_endpoints)
+    
+    # vis adjusted edge endpoint
+    edge_endpoints_map = np.zeros((cfg.IMAGE_SIZE, cfg.IMAGE_SIZE), dtype=np.uint8)
+    for (r, c) in edge_endpoints:
+        (r, c) = [int(x+0.5) for x in (r, c)]
+        cv.circle(edge_endpoints_map, (c, r), radius=3, color=(255, 255, 255), thickness=-1)
+    cv.imwrite(os.path.join(mask_output_dir, f'{img_id}_adjusted_edge_endpoint.png'), edge_endpoints_map)
+    
+    return edge_endpoints
+
 
 def cosine_similarity(v1, v2):
     norm_v1 = np.linalg.norm(v1)
@@ -437,7 +649,7 @@ def find_best_candidte_relaxedly(
         if d < min_distance:
             best_candidate = candidate
             min_distance = d
-        # else:   # b-->a      
+        # else:   # b-->a       # 好像注释掉效果更好？
         #     d = np.linalg.norm(np.array([r_c, c_c]) - np.array(r1, c1)) # 欧氏距离
         #     min_sd = angle_distance_weight
         #     v0 = np.array([r-r_c, c-c_c])
@@ -456,7 +668,6 @@ def find_best_candidte_relaxedly(
         #         min_distance = d
                 
     return best_candidate
-
 
 
 # @cal_runtime
@@ -497,6 +708,15 @@ def GTE_decode(
         os.makedirs(GTE_decode_output_dir)
     filename_prefix = os.path.join(GTE_decode_output_dir, f'{img_id}')
     
+    # mask_output_dir =  os.path.join(output_dir, 'pred_mask')   # output_dir/pred_mask/
+    # raw_edge_endpoints = get_raw_edge_endpoints(cfg, mask_output_dir, img_id, GTE, keypoints)
+
+    #（DO NOT modify the GTE）merge across kpts to make every kpt(originally every kpt
+    # has one predict for one specific point) predict the same coord 
+    # for one specific point in the road and then form the edge-endpoints
+    # edge_endpoints = []     # 加了edge_endpoints 解码速度会慢很多
+    # edge_endpoints = get_edge_endpoints(cfg, mask_output_dir, img_id, abs_GTE, raw_edge_endpoints)
+    
     keypoints_rtree = index.Index()
     for i in range(len(keypoints)):
         if cc > kpt_limit:
@@ -504,6 +724,17 @@ def GTE_decode(
         r, c = keypoints[i]
         keypoints_rtree.insert(i, (r, c, r, c))
         cc += 1
+        
+    # for i in range(len(edge_endpoints)):
+    #     if cc > kpt_limit*2:
+    #         break
+    #     r, c = edge_endpoints[i]    # 这里的rc是浮点数，为了计算精度而没有进行舍入
+    #     query_box = (r-5, c-5, r+5, c+5)
+    #     candidates = list(keypoints_rtree.intersection(query_box))
+        
+    #     if len(candidates) == 0:
+    #         keypoints_rtree.insert(i+len(keypoints), (r, c, r, c))
+    #     cc += 1
     
     # Step-2 Connect the vertices to build a graph. 
     # endpoint lookup 
@@ -532,7 +763,7 @@ def GTE_decode(
                 best_candidate = -1 
                 min_distance = snap_dist
                 
-                query_box = (r1-20, c1-20, r1+20, c1+20)    # TODO 可以变换以改变性能
+                query_box = (r1-20, c1-20, r1+20, c1+20)
                 candidates = list(keypoints_rtree.intersection(query_box))
         
                 # pass 1: strict
@@ -654,7 +885,8 @@ def GTE_decode(
     pickle.dump(graph_without_tracing, open(filename_prefix+"_graph_no_tracing.p","wb"))
     
     return rel_GTE, raw_graph, graph_refined
-
+        
+        
 def get_candidates(extended_part_adj_dict):
     new_candidates = []
     for k in extended_part_adj_dict.keys():
@@ -662,7 +894,6 @@ def get_candidates(extended_part_adj_dict):
             new_candidates.append(k)
             
     return new_candidates
-
 
 
 def whether_merge_by_GTE(cfg, mode, now_coord, pred_delta, existed_pnt, rc_to_kpt_idx, rel_GTE):
@@ -689,7 +920,7 @@ def whether_merge_by_GTE(cfg, mode, now_coord, pred_delta, existed_pnt, rc_to_kp
     kpt_idx = rc_to_kpt_idx[(existed_r, existed_c)]
     pred_adj_points = rel_GTE[kpt_idx] 
     
-    if not len(pred_adj_points):    # XXX 对面那个点根本就没有预测点，被阈值过滤掉了，后续要对此依据不同阈值进行过滤，而非统一先过滤
+    if not len(pred_adj_points):
         return False
     
     # emit to middle point
@@ -697,9 +928,9 @@ def whether_merge_by_GTE(cfg, mode, now_coord, pred_delta, existed_pnt, rc_to_kp
         raw_delta_r, raw_delta_c = raw_coord
         raw_adj_r, raw_adj_c = existed_r+cfg.NORM_D*raw_delta_r, existed_c+cfg.NORM_D*raw_delta_c
         if mode == 'after_decode':
-            d = np.linalg.norm(np.array((raw_adj_r, raw_adj_c)) - np.array((pred_adj_r, pred_adj_c)))  # 都预测了同一个中间点，才是最佳匹配
+            d = np.linalg.norm(np.array((raw_adj_r, raw_adj_c))- np.array((pred_adj_r, pred_adj_c)))  # 都预测了同一个中间点，才是最佳匹配
         else:
-            d = np.linalg.norm(np.array((raw_adj_r, raw_adj_c)) - np.array((r, c)))
+            d = np.linalg.norm(np.array((raw_adj_r, raw_adj_c))- np.array((r, c)))
         ad = 1 - cosine_similarity(np.array((delta_r, delta_c)), -np.array((raw_delta_r, raw_delta_c)))    # 对面射过来的向量要反向 
         if (d < cfg.INFER.BRIDGE_D and ad < 0.02): # approximately 11.4 degree
             return True
@@ -720,8 +951,7 @@ def whether_merge_by_GTE(cfg, mode, now_coord, pred_delta, existed_pnt, rc_to_kp
                     
     # return best_matched_existed_point_idx
     return False
-
-
+    
 
 def post_process_extended_GTE_to_grow_graph(
     cfg, 
@@ -841,18 +1071,14 @@ def post_process_extended_GTE_to_grow_graph(
             
             # 是否弥合 之前被分割出来了但又被解码算法过滤掉了的点
             if mode == 'after_decode': 
-                raw_keypoints_idx = list(
-                    raw_keypoints_rtree.intersection(
-                        (adj_r-cfg.INFER.BRIDGE_D,
-                         adj_c-cfg.INFER.BRIDGE_D,
-                         adj_r+cfg.INFER.BRIDGE_D,
-                         adj_c+cfg.INFER.BRIDGE_D)
-                    )
-                )
+                raw_keypoints_idx = list(raw_keypoints_rtree.intersection((adj_r-cfg.INFER.BRIDGE_D, 
+                                                                           adj_c-cfg.INFER.BRIDGE_D, 
+                                                                           adj_r+cfg.INFER.BRIDGE_D, 
+                                                                           adj_c+cfg.INFER.BRIDGE_D)))
             else:
                 raw_keypoints_idx = []
             if len(raw_keypoints_idx):
-                adj_r, adj_c = raw_keypoints[raw_keypoints_idx[0]]    # XXX 随便找一个可选点作要弥合的点
+                adj_r, adj_c = raw_keypoints[raw_keypoints_idx[0]]    
                 next_coord = (adj_r, adj_c)
                 if next_coord not in existed_adj_dict[now_coord]:
                     existed_adj_dict[now_coord].append(next_coord)    # add edge
@@ -884,8 +1110,7 @@ def post_process_extended_GTE_to_grow_graph(
                 extended_part_adj_dict[now_coord].append(next_coord) 
     
     return existed_adj_dict, extended_part_adj_dict
-
-
+    
 
 # @cal_runtime
 def graph_growing(
@@ -905,7 +1130,7 @@ def graph_growing(
         :param:
             image_embeddings: [B, C, H, W], H=W=cfg.PATCH_SIZE//16
     '''
-    initial_candidates = []     
+    initial_candidates = []     # candidates stack
     existed_points = []
     existed_points_rtree = index.Index()
     if mode == 'after_decode':
@@ -936,7 +1161,7 @@ def graph_growing(
     candidates = np.array(initial_candidates)
     
     # raw_decode_graph_pnts = []
-    # if raw_decode_graph is not None:    # 开启了decode
+    # if raw_decode_graph is not None:    # 开启了decode的
     #     raw_decode_graph_pnts_rtree = index.Index()     # points in decoded graph before refine
     #     for i, cdt in enumerate(raw_decode_graph.keys()): 
     #         r, c = cdt
@@ -945,7 +1170,7 @@ def graph_growing(
     # else:
     #     raw_decode_graph_pnts_rtree = None
     
-
+    from infer import infer_topo_patch_by_patch
     
     spurs_thr = 50
     isolated_thr = 200
@@ -989,6 +1214,7 @@ def graph_growing(
             mode=mode
         )
         
+
         for k, v in adj_dict.items():   # 移除可能的 邻接点有自己的情况，防止后续refine时出现除0错误
             if k in v:
                 v.remove(k)
@@ -1022,4 +1248,3 @@ def graph_growing(
     graph_refined = graph
      
     return graph_refined, extended_part_adj_dict
-    

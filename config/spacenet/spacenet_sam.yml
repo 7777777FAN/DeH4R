@@ -4,7 +4,7 @@ BASE_LR: 0.001
 ENCODER_LR_FACTOR: 0.1
 EPOCH: 30
 BATCH_SIZE: 16
-NUM_WORKERS: 0
+NUM_WORKERS: 32
 UNFROZEN_SAM: True
 VIS_TRAIN: False
 PRETRAINED: True
@@ -83,7 +83,7 @@ INFER:
   ROAD_NMS_RADIUS: 12
   EDGE_ENDPOINT_D: 10  # 在第一次预测时, 为了扩展关键点把edge_endpoints插入时考虑其多大范围内已有关键点
 
-  TRACE_THR: 0.65 # XXX 
+  TRACE_THR: 0.65 
   SERCH_D: 16 # 单位: m, 在追踪的时候，在每个预测点周围多大的范围去找已有点(c)，该已有点(c)和当前点(a)同时预测了这个预测点（中间点b） a--> b <--c
   BRIDGE_D: 10 # 单位: m, 在追踪的时候每个预测点和已有点距离多近会被弥合  
 

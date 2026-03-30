@@ -1,6 +1,6 @@
 
 import torch
-from model import R2RC
+from model import DeH4R
 from argparse import ArgumentParser
 import time
 from tqdm import tqdm
@@ -14,10 +14,9 @@ import pickle
 import utils 
 
 
-
 parser = ArgumentParser()
 parser.add_argument(
-    '--config', default='./config/R2RC.yml'
+    '--config', default='./config/DeH4R.yml'
 )
 parser.add_argument(
     '--ckpt', default=None
@@ -33,7 +32,6 @@ parser.add_argument(
 
 parser.add_argument(
     '--OOD', default='', type=str)
-
 
 
 
@@ -106,9 +104,10 @@ def infer_topo_patch_by_patch(model, all_patch_info, batch_size, all_backbone_ou
         pred_adj_points_validity, pred_adj_pnt_coords = model.infer_topo(batch_backbone_out, batch_topo_data)
         pred_adj_points_validity, pred_adj_pnt_coords = pred_adj_points_validity.detach().cpu().numpy(), pred_adj_pnt_coords.detach().cpu().numpy()
         
+        # 把batch的结果附加到总结果上
         for b in range(batch_size):
             for n in range(max_valid_length):
-                if not batch_topo_data['valid'][b, n]:  # 当前点是否是有效输入点，输入要先有效才能考虑输出
+                if not batch_topo_data['valid'][b, n]:  # 当前点是否是有效输入点，
                     continue
                 kpt_idx_in_all = idx_map[b][n]
                 GTE[kpt_idx_in_all].append((pred_adj_points_validity[b, n], pred_adj_pnt_coords[b, n]))
@@ -179,7 +178,7 @@ def infer_masks_patch_by_patch_and_vis(cfg, num_batch, batch_size, all_patch_inf
     samplepoints, samplepoints_scores = utils.detect_local_minima(arr=-fused_samplepoint_map, mask=fused_samplepoint_map, threshold=config.INFER.SMPT_THR)
     
     # 直接从路面结果NMS得到路面点
-    road_points, road_scores = utils.get_points_and_scores_from_mask(mask=fused_road_map, threshold=config.INFER.ROAD_THR, mode='normal')  # 所有可能的路面点，不是细化过后的
+    road_points, road_scores = utils.get_points_and_scores_from_mask(mask=fused_road_map, threshold=config.INFER.ROAD_THR, mode='normal')  # 所有可能的路面点
     
     keypoints = utils.nms_points(keypoints, keypoint_scores, radius=cfg.INFER.KPT_NMS_RADIUS, return_indices=False)
     samplepoints = utils.nms_points(samplepoints, samplepoints_scores, radius=cfg.INFER.SMPT_NMS_RADIUS, return_indices=False)
@@ -242,8 +241,9 @@ def infer_one_img(cfg, model, img_id, img):
         img=img, 
         output_dir=output_dir
     )
-    # (DO modify the GTE) merge across patches to make every kpt has unique predict for one adj point
-    rel_GTE = utils.merge_across_patch_predicts(cfg, GTE, keypoints)    
+    
+    rel_GTE = utils.merge_across_patch_predicts(cfg, GTE, keypoints)    # (DO modify the GTE) merge across patches to make every kpt has unique predict for one adj point
+    
     if cfg.INFER.DECODE:    # 是否使用解码算法
         total_refine = False if cfg.INFER.TRACE else True
         raw_rel_GTE, raw_decode_graph, refined_graph = utils.GTE_decode(
@@ -355,28 +355,27 @@ if '__main__' == __name__:
     config.dev_run = False
     device = torch.device(args.device) if 'cuda' in args.device else torch.device('cpu')
     
-    torch.backends.cudnn.enabled = True # 启用cuDNN
-    torch.backends.cudnn.benchmark = True # 为当前设置寻找合适的算法
-    # utils.set_seed()
+    torch.backends.cudnn.enabled = True
+    torch.backends.cudnn.benchmark = True 
     
     # init model and load ckpts
-    model = R2RC(config)
+    model = DeH4R(config)
     ckpt = torch.load(args.ckpt, map_location='cpu', weights_only=False)
     print(f"=========== loading ckpt from {args.ckpt} to model ===========")
     model.load_state_dict(ckpt['state_dict'], strict=True)
     print(f"=========== {'ckpt successfully loaded!':} ===========")
+    
+    torch.save({"state_dict": model.state_dict()}, "/data/godx/research/paper/DeH4R/pretrained_pth/globalscale_sam.pth")
     model.to(device)
     model.eval()
+    
     # get data partion
-   
+    
     if str(config.DATASET).lower() == 'cityscale':
-        rgb_pattern = './data/cityscale/20cities/region_{}_sat.png'
         _, _, test_img_ids = utils.get_data_split(dataset=config.DATASET)
-        
+        rgb_pattern = './data/cityscale/20cities/region_{}_sat.png'  
     elif str(config.DATASET).lower() == 'spacenet':
         rgb_pattern = './data/spacenet/RGB_1.0_meter/{}__rgb.png'
-        _, _, test_img_ids = utils.get_data_split(dataset=config.DATASET)
-        
     elif str(config.DATASET).lower() == 'globalscale':
         rgb_pattern = './data/globalscale/all/region_{}_sat.png'
         _, _, test, test_ood = utils.globalscale_data_partition()
