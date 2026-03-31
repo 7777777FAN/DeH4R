@@ -365,7 +365,6 @@ if '__main__' == __name__:
     model.load_state_dict(ckpt['state_dict'], strict=True)
     print(f"=========== {'ckpt successfully loaded!':} ===========")
     
-    torch.save({"state_dict": model.state_dict()}, "/data/godx/research/paper/DeH4R/pretrained_pth/globalscale_sam.pth")
     model.to(device)
     model.eval()
     

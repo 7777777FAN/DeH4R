@@ -13,6 +13,7 @@ DeH4R unifies graph-growing dynamics with graph-generating efficiency through a 
 
 ## **Updates**
 - ✅ **2026/3/30**: Full code release.
+- ✅ **2026/3/30**: Accepted to IEEE Transactions on Geoscience and Remote Sensing (TGRS)
 - ✅ **2025/9/14**: Release model and weights (available at [DeH4R](https://huggingface.co/godx7/DeH4R)). 
 - ✅ **2025/8/20**: Release the code for inference and evauation.
 
