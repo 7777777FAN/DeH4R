@@ -104,13 +104,15 @@ For any questions, please email [godx](mailto:gooodx@whu.edu.cn) or, preferably,
 
 ## **Citation**
 ```
-@misc{gong2025deh4rdecoupledhybridmethod,
-    title={DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction}, 
-    author={Dengxian Gong and Shunping Ji},
-    year={2025},
-    eprint={2508.13669},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV},
-    url={https://arxiv.org/abs/2508.13669}, 
-}
+@ARTICLE{11471821,
+  author={Gong, Dengxian and Ji, Shunping},
+  journal={IEEE Transactions on Geoscience and Remote Sensing}, 
+  title={DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction}, 
+  year={2026},
+  volume={},
+  number={},
+  pages={1-1},
+  keywords={Feeds;Radio broadcasting;Frequency modulation;Filtering;Filters;Pixel;Location awareness;Mobile communication;Videos;Digital images;Road Extraction;Road Network Graph;Remote Sensing Imagery},
+  doi={10.1109/TGRS.2026.3679934}}
+
 ```
