@@ -109,10 +109,10 @@ For any questions, please email [godx](mailto:gooodx@whu.edu.cn) or, preferably,
   journal={IEEE Transactions on Geoscience and Remote Sensing}, 
   title={DeH4R: A Decoupled and Hybrid Method for Road Network Graph Extraction}, 
   year={2026},
-  volume={},
+  volume={64},
   number={},
-  pages={1-1},
-  keywords={Feeds;Radio broadcasting;Frequency modulation;Filtering;Filters;Pixel;Location awareness;Mobile communication;Videos;Digital images;Road Extraction;Road Network Graph;Remote Sensing Imagery},
+  pages={1-11},
+  keywords={Feeds;Radio broadcasting;Frequency modulation;Filtering;Filters;Pixel;Location awareness;Mobile communication;Videos;Digital images;Remote sensing imagery;road extraction;road network graph},
   doi={10.1109/TGRS.2026.3679934}}
 
 ```
